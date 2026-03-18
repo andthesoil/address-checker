@@ -390,7 +390,7 @@ function similarity(a, b) {
 const apiCache   = {}; // zip7 → undefined/[]/'error'/[{pref,city,town}]
 const prefCache  = {}; // prefix3 → null/'error'/{last4: [pref,city,town,...]}
 
-async function fetchWithTimeout(url, ms=8000) {
+async function fetchWithTimeout(url, ms=15000) {
   const ctrl = new AbortController();
   const tid  = setTimeout(() => ctrl.abort(), ms);
   try {
@@ -406,19 +406,29 @@ async function fetchWithTimeout(url, ms=8000) {
 async function fetchPrefixData(prefix3) {
   if (prefCache[prefix3] !== undefined) return prefCache[prefix3];
   const url = `https://yubinbango.github.io/yubinbango-data/data/${prefix3}.js`;
-  try {
-    const res = await fetchWithTimeout(url);
-    if (!res.ok) { prefCache[prefix3] = 'error'; return 'error'; }
-    const text = await res.text();
-    // JSONP形式: $yubin(100, {"0001":["都道府県","市区町村","町域",...], ...});
-    const m = text.match(/\$yubin\s*\(\s*\d+\s*,\s*(\{[\s\S]*?\})\s*\)/);
-    if (!m) { prefCache[prefix3] = 'error'; return 'error'; }
-    prefCache[prefix3] = JSON.parse(m[1]);
-    return prefCache[prefix3];
-  } catch(e) {
-    prefCache[prefix3] = 'error';
-    return 'error';
+  const MAX_RETRY = 3;
+  const RETRY_DELAY = [1000, 2000, 3000]; // リトライ間隔（ミリ秒）
+  for (let attempt = 0; attempt < MAX_RETRY; attempt++) {
+    try {
+      if (attempt > 0) await new Promise(r => setTimeout(r, RETRY_DELAY[attempt - 1]));
+      const res = await fetchWithTimeout(url);
+      if (!res.ok) continue; // 4xx/5xxはリトライ
+      const text = await res.text();
+      // JSONP形式: $yubin(100, {"0001":["都道府県","市区町村","町域",...], ...});
+      const m = text.match(/\$yubin\s*\(\s*\d+\s*,\s*(\{[\s\S]*?\})\s*\)/);
+      if (!m) continue; // パース失敗もリトライ
+      prefCache[prefix3] = JSON.parse(m[1]);
+      return prefCache[prefix3];
+    } catch(e) {
+      // タイムアウト・ネットワークエラー → リトライ
+      if (attempt === MAX_RETRY - 1) {
+        prefCache[prefix3] = 'error';
+        return 'error';
+      }
+    }
   }
+  prefCache[prefix3] = 'error';
+  return 'error';
 }
 
 async function lookupZip(zip) {
@@ -641,7 +651,7 @@ async function runCheck() {
       const batch = uniquePrefixes.slice(i, i+BATCH);
       const pct = Math.round(i/uniquePrefixes.length*40);
       document.getElementById('progressBar').style.width=pct+'%';
-      document.getElementById('progressLabel').textContent=`郵便番号データ取得中... ${Math.min(i+BATCH,uniquePrefixes.length)}/${uniquePrefixes.length}ブロック`;
+      document.getElementById('progressLabel').textContent=`郵便番号データ取得中... ${Math.min(i+BATCH,uniquePrefixes.length)}/${uniquePrefixes.length}ブロック（失敗時は最大3回リトライ）`;
       await Promise.all(batch.map(p=>fetchPrefixData(p)));
     }
     // 取得済みデータからzip単位でマップ作成（fetchなし・高速）
