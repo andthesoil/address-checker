@@ -209,7 +209,7 @@ tr.row-besso td { background: #f0fbf9 !important; }
         <span class="toggle-label">APIで住所補正</span>
       </div>
       <div class="api-desc">
-        <strong>郵便番号データ（zipcloud / 日本郵便準拠）</strong>で郵便番号ごとに正しい住所（都道府県・市区町村・町域）を取得し、入力住所と比較します。<br>
+        <strong>郵便番号データ（yubinbango / 日本郵便準拠）</strong>で郵便番号ごとに正しい住所（都道府県・市区町村・町域）を取得し、入力住所と比較します。<br>
         例：「幸町」→「<strong>幸田町</strong>」のような脱字・誤字も検知して補正候補を提示します。<br>
       </div>
     </div>
@@ -386,7 +386,8 @@ function similarity(a, b) {
 // リクエスト数が大幅に削減される。
 // ============================================================
 
-const apiCache = {}; // zip7 → undefined/[]/'error'/[{pref,city,town}]
+const apiCache  = {}; // zip7 → undefined/[]/'error'/[{pref,city,town}]
+const prefCache = {}; // prefix3 → 'error'/{last4:[pref,city,town,...]}
 
 async function fetchWithTimeout(url, ms=15000) {
   const ctrl = new AbortController();
@@ -401,39 +402,46 @@ async function fetchWithTimeout(url, ms=15000) {
   }
 }
 
-// zipcloud API（https://からCORSなし、JSON形式）
-async function lookupZip(zip) {
-  const z = String(zip||'').replace(/-/g,'');
-  if (z.length !== 7 || !/^\d+$/.test(z)) return null;
-  if (apiCache[z] !== undefined) return apiCache[z];
-
-  const url = `https://zipcloud.ibsnet.co.jp/api/search?zipcode=${z}`;
+// yubinbango（GitHub Pages / Access-Control-Allow-Origin: * / JSONP形式）
+async function fetchPrefixData(prefix3) {
+  if (prefCache[prefix3] !== undefined) return prefCache[prefix3];
+  const url = `https://yubinbango.github.io/yubinbango-data/data/${prefix3}.js`;
   const MAX_RETRY = 3;
   const RETRY_DELAY = [1000, 2000, 3000];
-
   for (let attempt = 0; attempt < MAX_RETRY; attempt++) {
     try {
       if (attempt > 0) await new Promise(r => setTimeout(r, RETRY_DELAY[attempt - 1]));
       const res = await fetchWithTimeout(url);
       if (!res.ok) continue;
-      const json = await res.json();
-      if (json.status !== 200) { apiCache[z] = []; return []; }
-      if (!json.results || json.results.length === 0) { apiCache[z] = []; return []; }
-      const r = json.results[0];
-      const result = [{
-        pref: r.address1 || '',
-        city: r.address2 || '',
-        town: r.address3 || '',
-        full: (r.address1||'') + (r.address2||'') + (r.address3||''),
-      }];
-      apiCache[z] = result;
-      return result;
+      const text = await res.text();
+      const m = text.match(/\$yubin\s*\(\s*\d+\s*,\s*(\{[\s\S]*?\})\s*\)/);
+      if (!m) continue;
+      prefCache[prefix3] = JSON.parse(m[1]);
+      return prefCache[prefix3];
     } catch(e) {
-      if (attempt === MAX_RETRY - 1) { apiCache[z] = 'error'; return 'error'; }
+      if (attempt === MAX_RETRY - 1) { prefCache[prefix3] = 'error'; return 'error'; }
     }
   }
-  apiCache[z] = 'error';
+  prefCache[prefix3] = 'error';
   return 'error';
+}
+
+async function lookupZip(zip) {
+  const z = String(zip||'').replace(/-/g,'');
+  if (z.length !== 7 || !/^\d+$/.test(z)) return null;
+  if (apiCache[z] !== undefined) return apiCache[z];
+  const prefix3 = z.slice(0, 3);
+  const last4   = z.slice(3);
+  const data = await fetchPrefixData(prefix3);
+  if (data === 'error') { apiCache[z] = 'error'; return 'error'; }
+  const entry = data[last4];
+  if (!entry || !entry[0]) { apiCache[z] = []; return []; }
+  const result = [{
+    pref: entry[0]||'', city: entry[1]||'', town: entry[2]||'',
+    full: (entry[0]||'')+(entry[1]||'')+(entry[2]||''),
+  }];
+  apiCache[z] = result;
+  return result;
 }
 
 // 住所の正規化（半角・全角スペースをすべて除去）
@@ -564,6 +572,7 @@ fileInput.addEventListener('change', e=>{if(e.target.files[0])loadFile(e.target.
 function loadFile(file) {
   // エラーキャッシュのみクリア（成功済み結果は保持してAPI負荷を抑える）
   Object.keys(apiCache).forEach(k => { if (apiCache[k] === 'error') delete apiCache[k]; });
+  Object.keys(prefCache).forEach(k => { if (prefCache[k] === 'error') delete prefCache[k]; });
   const reader = new FileReader();
   reader.onload = e => {
     const text = decodeFile(e.target.result);
@@ -622,22 +631,27 @@ async function runCheck() {
   }
 
   if (useApi && uniqueZips.length > 0) {
-    const BATCH = 5; // zipcloud は1件ずつなので並列数を抑える
+    const uniquePrefixes = [...new Set(uniqueZips.map(z => z.slice(0,3)))];
+    const BATCH = 10;
     let errorCount = 0;
-    let fetched = 0;
+    let fetchedPrefixes = 0;
 
-    for (let i = 0; i < uniqueZips.length; i += BATCH) {
-      const batch = uniqueZips.slice(i, i + BATCH);
-      await Promise.all(batch.map(async z => {
-        const r = await lookupZip(z);
-        zipApiMap[z] = r;
-        if (r === 'error') errorCount++;
-        fetched++;
-      }));
-      const pct1 = Math.round(fetched / uniqueZips.length * 50);
+    for (let i = 0; i < uniquePrefixes.length; i += BATCH) {
+      const batch = uniquePrefixes.slice(i, i + BATCH);
+      await Promise.all(batch.map(p => fetchPrefixData(p)));
+      fetchedPrefixes += batch.length;
+      // 解決済みZIP数でプログレスを更新
+      const resolvedZips = uniqueZips.filter(z => prefCache[z.slice(0,3)] !== undefined && prefCache[z.slice(0,3)] !== 'error').length;
+      const pct1 = Math.round(resolvedZips / uniqueZips.length * 50);
       updateProgress(pct1, 0);
       document.getElementById('progressLabel').textContent =
-        `郵便番号照合中... ${fetched}/${uniqueZips.length}件（失敗時は最大3回リトライ）`;
+        `郵便番号照合中... ${resolvedZips}/${uniqueZips.length}件（失敗時は最大3回リトライ）`;
+    }
+
+    for (const z of uniqueZips) {
+      const r = await lookupZip(z);
+      zipApiMap[z] = r;
+      if (r === 'error') errorCount++;
     }
     updateProgress(50, 0);
 
@@ -1110,6 +1124,7 @@ function resetTool(){
   document.getElementById('cntTotal').textContent='0';
   // エラーキャッシュのみクリア（成功済み結果は保持）
   Object.keys(apiCache).forEach(k => { if (apiCache[k] === 'error') delete apiCache[k]; });
+  Object.keys(prefCache).forEach(k => { if (prefCache[k] === 'error') delete prefCache[k]; });
 }
 
 function escHtml(s){return String(s||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');}
