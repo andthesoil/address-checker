@@ -1,0 +1,1130 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>住所・郵便番号 整合性チェック＆補正ツール</title>
+<style>
+* { box-sizing: border-box; margin: 0; padding: 0; }
+body { font-family: "Hiragino Kaku Gothic Pro","Meiryo",sans-serif; background: #f0f4f8; color: #333; min-height: 100vh; }
+
+.header { background: linear-gradient(135deg, #1a1a2e, #16213e); color: white; padding: 24px 32px; }
+.header h1 { font-size: 20px; font-weight: 700; }
+.header p { font-size: 13px; color: rgba(255,255,255,0.6); margin-top: 4px; }
+
+.main { max-width: 1600px; margin: 0 auto; padding: 28px 20px; }
+
+.upload-card { background: white; border-radius: 14px; padding: 28px; box-shadow: 0 2px 8px rgba(0,0,0,0.06); margin-bottom: 20px; }
+.upload-card h2 { font-size: 15px; font-weight: 700; margin-bottom: 14px; color: #1a1a2e; }
+
+.drop-zone {
+  border: 2px dashed #b0c4de; border-radius: 10px; padding: 36px 20px;
+  text-align: center; cursor: pointer; transition: all 0.2s; background: #f8fafc;
+}
+.drop-zone:hover, .drop-zone.over { border-color: #4a90d9; background: #eef5fd; }
+.drop-zone .icon { font-size: 38px; margin-bottom: 8px; }
+.drop-zone p { color: #666; font-size: 14px; }
+.drop-zone .hint { font-size: 11px; color: #aaa; margin-top: 5px; }
+#fileInput { display: none; }
+
+.config-row { display: flex; flex-wrap: wrap; gap: 14px; margin-top: 18px; }
+.config-item { display: flex; flex-direction: column; gap: 4px; }
+.config-item label { font-size: 11px; color: #666; font-weight: 700; text-transform: uppercase; letter-spacing: 0.3px; }
+.config-item select, .config-item input[type=text] { padding: 7px 10px; border: 1px solid #ddd; border-radius: 6px; font-size: 13px; min-width: 190px; }
+
+/* API Toggle */
+.api-toggle-row { display: flex; align-items: flex-start; gap: 12px; background: #f0f6ff; border-radius: 10px; padding: 14px 16px; margin-top: 16px; border: 1px solid #d0e4f7; }
+.toggle-wrap { display: flex; align-items: center; gap: 8px; flex-shrink: 0; }
+.toggle { position: relative; width: 42px; height: 22px; }
+.toggle input { opacity: 0; width: 0; height: 0; }
+.slider { position: absolute; cursor: pointer; inset: 0; background: #ccc; border-radius: 22px; transition: 0.3s; }
+.slider:before { position: absolute; content: ""; height: 16px; width: 16px; left: 3px; bottom: 3px; background: white; border-radius: 50%; transition: 0.3s; }
+input:checked + .slider { background: #4a90d9; }
+input:checked + .slider:before { transform: translateX(20px); }
+.toggle-label { font-size: 13px; font-weight: 700; color: #2471a3; }
+.api-desc { font-size: 12px; color: #555; line-height: 1.5; }
+.api-desc strong { color: #2471a3; }
+
+.btn-run { margin-top: 18px; padding: 11px 32px; background: #1a1a2e; color: white; border: none; border-radius: 8px; font-size: 14px; font-weight: 700; cursor: pointer; transition: background 0.2s; }
+.btn-run:hover { background: #2d3561; }
+.btn-run:disabled { background: #aaa; cursor: not-allowed; }
+
+/* Progress */
+#progress { display: none; margin-top: 16px; }
+.progress-bar-wrap { background: #e9ecef; border-radius: 99px; height: 10px; overflow: hidden; }
+.progress-bar { height: 100%; background: linear-gradient(90deg, #4a90d9, #27ae60); border-radius: 99px; transition: width 0.3s; width: 0%; }
+.progress-label { font-size: 12px; color: #666; margin-top: 6px; }
+
+/* Results */
+#results { display: none; }
+.summary-grid { display: grid; grid-template-columns: repeat(6, 1fr); gap: 12px; margin-bottom: 22px; }
+.s-card { background: white; border-radius: 10px; padding: 14px 16px; box-shadow: 0 1px 4px rgba(0,0,0,0.06); border-top: 4px solid #ccc; }
+.s-card.total { border-top-color: #4a90d9; }
+.s-card.ok { border-top-color: #27ae60; }
+.s-card.warn { border-top-color: #f39c12; }
+.s-card.danger { border-top-color: #e74c3c; }
+.s-card.corrected { border-top-color: #8e44ad; }
+.s-card.besso { border-top-color: #16a085; }
+.s-card.besso .s-num { color: #16a085; }
+.s-card.clickable { cursor: pointer; transition: all 0.15s; }
+.s-card.clickable:hover { transform: translateY(-2px); box-shadow: 0 4px 14px rgba(0,0,0,0.12); }
+.s-card.clickable.active { outline: 3px solid currentColor; outline-offset: 2px; }
+.s-card.total.active { outline-color: #4a90d9; }
+.s-card.ok.active { outline-color: #27ae60; }
+.s-card.warn.active { outline-color: #f39c12; }
+.s-card.danger.active { outline-color: #e74c3c; }
+.s-card.corrected.active { outline-color: #8e44ad; }
+.s-card.besso.active { outline-color: #16a085; }
+.s-label { font-size: 11px; color: #999; margin-bottom: 4px; }
+.s-num { font-size: 28px; font-weight: 700; }
+.s-card.total .s-num { color: #4a90d9; }
+.s-card.ok .s-num { color: #27ae60; }
+.s-card.warn .s-num { color: #f39c12; }
+.s-card.danger .s-num { color: #e74c3c; }
+.s-card.corrected .s-num { color: #8e44ad; }
+
+/* Tabs */
+.tabs { display: flex; gap: 2px; border-bottom: 2px solid #e9ecef; }
+.tab { padding: 10px 18px; font-size: 13px; font-weight: 600; color: #888; cursor: pointer; border-bottom: 2px solid transparent; margin-bottom: -2px; }
+.tab.active { color: #1a1a2e; border-bottom-color: #1a1a2e; }
+.tab-panel { display: none; }
+.tab-panel.active { display: block; }
+
+/* Table */
+.table-wrap { background: white; border-radius: 0 0 12px 12px; box-shadow: 0 2px 8px rgba(0,0,0,0.06); overflow: auto; max-height: 620px; }
+table { width: 100%; border-collapse: collapse; font-size: 12px; }
+th { background: #f8f9fa; padding: 9px 11px; text-align: left; font-weight: 700; color: #555; position: sticky; top: 0; z-index: 10; white-space: nowrap; border-bottom: 2px solid #e9ecef; }
+th.extra { background: #f0eafa; }
+td { padding: 8px 11px; border-bottom: 1px solid #f0f0f0; vertical-align: top; max-width: 200px; word-break: break-all; }
+tr.row-danger td { background: #fff9f9 !important; }
+tr.row-warning td { background: #fffef0 !important; }
+tr.row-corrected td { background: #faf5ff !important; }
+
+/* Badges */
+.badge { display: inline-block; padding: 2px 8px; border-radius: 20px; font-size: 11px; font-weight: 700; white-space: nowrap; }
+.badge.danger { background: #fdecea; color: #c0392b; }
+.badge.warning { background: #fef9e7; color: #d35400; }
+.badge.ok { background: #eafaf1; color: #1e8449; }
+.badge.corrected { background: #f5eef8; color: #7d3c98; }
+.badge.besso { background: #e8f8f5; color: #16a085; }
+.issue-item.besso { border-left-color: #16a085; }
+.issue-item.besso .issue-reasons li::before { color: #16a085; }
+tr.row-besso td { background: #f0fbf9 !important; }
+
+/* Diff highlight */
+.addr-orig { color: #c0392b; text-decoration: line-through; font-size: 11px; }
+.addr-correct { color: #1e8449; font-weight: 700; font-size: 11px; }
+.addr-arrow { color: #888; font-size: 11px; margin: 0 3px; }
+
+/* Issue cards */
+.issue-list { padding-top: 16px; }
+.issue-item { background: white; border-radius: 10px; padding: 16px 18px; margin-bottom: 10px; box-shadow: 0 1px 4px rgba(0,0,0,0.06); border-left: 5px solid #ccc; }
+.issue-item.danger { border-left-color: #e74c3c; }
+.issue-item.warning { border-left-color: #f39c12; }
+.issue-item.corrected { border-left-color: #8e44ad; }
+.issue-header { display: flex; align-items: center; gap: 8px; margin-bottom: 8px; }
+.issue-zip { font-size: 12px; color: #888; }
+.issue-addr { font-size: 12px; color: #555; margin: 6px 0 4px; }
+.issue-reasons { list-style: none; }
+.issue-reasons li { font-size: 12px; padding: 2px 0 2px 14px; position: relative; color: #444; }
+.issue-reasons li::before { content: '▶'; position: absolute; left: 0; font-size: 9px; top: 4px; }
+.issue-item.danger .issue-reasons li::before { color: #e74c3c; }
+.issue-item.warning .issue-reasons li::before { color: #f39c12; }
+.issue-item.corrected .issue-reasons li::before { color: #8e44ad; }
+
+/* Correction box */
+.correction-box { background: #f5eef8; border-radius: 7px; padding: 10px 12px; margin-top: 8px; }
+.correction-title { font-size: 11px; font-weight: 700; color: #7d3c98; margin-bottom: 5px; }
+.correction-row { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; font-size: 12px; }
+.correction-field { background: white; border: 1px solid #d7bde2; border-radius: 5px; padding: 4px 8px; }
+
+/* Action bar */
+.action-bar { display: flex; gap: 10px; margin-top: 20px; flex-wrap: wrap; }
+.btn-dl { padding: 10px 20px; border: none; border-radius: 8px; font-size: 13px; font-weight: 700; cursor: pointer; transition: all 0.2s; }
+.btn-dl.primary { background: #27ae60; color: white; }
+.btn-dl.primary:hover { background: #1e8449; }
+.btn-dl.secondary { background: #8e44ad; color: white; }
+.btn-dl.secondary:hover { background: #7d3c98; }
+.btn-dl.blue { background: #4a90d9; color: white; }
+.btn-dl.blue:hover { background: #2471a3; }
+.btn-dl.outline { background: white; color: #555; border: 1px solid #ddd; }
+.btn-dl.outline:hover { background: #f8f9fa; }
+.btn-dl.orange { background: #e67e22; color: white; }
+.btn-dl.orange:hover { background: #ca6f1e; }
+#dedupeBadge { display:none; font-size:11px; background:#e67e22; color:white; border-radius:10px; padding:1px 7px; margin-left:6px; vertical-align:middle; }
+
+.empty { text-align: center; padding: 40px; color: #aaa; font-size: 14px; }
+
+@media (max-width: 700px) {
+  .summary-grid { grid-template-columns: repeat(2, 1fr); }
+  .header { padding: 16px 18px; }
+  .main { padding: 14px; }
+}
+</style>
+</head>
+<body>
+
+<div class="header">
+  <h1>🏠 住所・郵便番号 整合性チェック＆補正ツール</h1>
+  <p>郵便番号APIで正しい住所を引いて、入力ミス・不備を自動検知・補正候補を提示します</p>
+</div>
+
+<div class="main">
+
+  <div class="upload-card">
+    <h2>① CSVファイルをアップロード</h2>
+    <div class="drop-zone" id="dropZone" onclick="document.getElementById('fileInput').click()">
+      <div class="icon">📂</div>
+      <p>ここにCSVをドラッグ＆ドロップ、またはクリックして選択</p>
+      <div class="hint">対応形式: CSV（Shift-JIS / UTF-8 自動判定）</div>
+    </div>
+    <input type="file" id="fileInput" accept=".csv">
+
+    <div class="config-row">
+      <div class="config-item">
+        <label>郵便番号 列名（または列番号）</label>
+        <input type="text" id="colZip" value="27" placeholder="例: 郵便番号 または 27（AA列）">
+      </div>
+      <div class="config-item">
+        <label>住所（AB列）列名（または列番号）</label>
+        <input type="text" id="colAddr" value="28" placeholder="例: お届け先住所 または 28（AB列）">
+      </div>
+      <div class="config-item">
+        <label>比較住所（E列）列名（または列番号）</label>
+        <input type="text" id="colBillAddr" value="5" placeholder="例: 請求先住所 または 5（E列）">
+      </div>
+      <div class="config-item">
+        <label>O-PLUX判定理由 列名（任意）</label>
+        <input type="text" id="colOplux" value="O-PLUX 判定理由" placeholder="空欄でスキップ">
+      </div>
+    </div>
+
+    <!-- API Toggle -->
+    <div class="api-toggle-row">
+      <div class="toggle-wrap">
+        <label class="toggle">
+          <input type="checkbox" id="useApi" checked>
+          <span class="slider"></span>
+        </label>
+        <span class="toggle-label">APIで住所補正</span>
+      </div>
+      <div class="api-desc">
+        <strong>郵便番号データ（yubinbango / 日本郵便準拠）</strong>で郵便番号ごとに正しい住所（都道府県・市区町村・町域）を取得し、入力住所と比較します。<br>
+        例：「幸町」→「<strong>幸田町</strong>」のような脱字・誤字も検知して補正候補を提示します。<br>
+        <span style="color:#888;font-size:11px;">📡 インターネット接続が必要です。GitHub Pages 経由のため <strong>file:// でもCORSエラーなし</strong>で動作します。</span>
+      </div>
+    </div>
+
+    <button class="btn-run" id="btnRun" disabled onclick="runCheck()">🔍 検証を実行する</button>
+
+    <div id="progress">
+      <div class="progress-bar-wrap"><div class="progress-bar" id="progressBar"></div></div>
+      <div class="progress-label" id="progressLabel">処理中...</div>
+    </div>
+  </div>
+
+  <!-- Results -->
+  <div id="results">
+    <div class="summary-grid">
+      <div class="s-card total clickable" onclick="setFilter('all')" id="card-all"><div class="s-label">📋 全件表示</div><div class="s-num" id="cntTotal">0</div><div id="dedupNotice" style="display:none;font-size:10px;color:#e67e22;margin-top:3px;font-weight:700;"></div></div>
+      <div class="s-card ok clickable"    onclick="setFilter('正常')" id="card-ok"><div class="s-label">✅ 正常</div><div class="s-num" id="cntOk">0</div></div>
+      <div class="s-card corrected clickable" onclick="setFilter('補正あり')" id="card-corrected"><div class="s-label">🔧 住所補正あり</div><div class="s-num" id="cntCorrected">0</div></div>
+      <div class="s-card warn clickable" onclick="setFilter('要確認')" id="card-warn"><div class="s-label">⚠️ 要確認</div><div class="s-num" id="cntWarn">0</div></div>
+      <div class="s-card danger clickable" onclick="setFilter('不備あり')" id="card-danger"><div class="s-label">🚨 不備あり</div><div class="s-num" id="cntDanger">0</div></div>
+      <div class="s-card besso clickable" onclick="setFilter('別送確認')" id="card-besso"><div class="s-label">📦 別送確認</div><div class="s-num" id="cntBesso">0</div></div>
+    </div>
+
+    <div class="tabs">
+      <div class="tab active" onclick="switchTab('issues')">🚨 問題・補正一覧</div>
+      <div class="tab" onclick="switchTab('all')">📋 全データ</div>
+    </div>
+
+    <div class="tab-panel active" id="tab-issues">
+      <div class="issue-list" id="issueList"></div>
+    </div>
+
+    <div class="tab-panel" id="tab-all">
+      <div class="table-wrap">
+        <table>
+          <thead id="tableHead"></thead>
+          <tbody id="tableBody"></tbody>
+        </table>
+      </div>
+    </div>
+
+    <div class="action-bar">
+      <button class="btn-dl primary" onclick="downloadCSV(false)">⬇ 検証済みCSV（全件）</button>
+      <button class="btn-dl secondary" onclick="downloadCSV(true)">⬇ 補正済みCSV（住所上書き）</button>
+      <button class="btn-dl blue" onclick="downloadIssuesOnly()">⬇ 問題行のみCSV</button>
+      <button class="btn-dl orange" onclick="downloadCSV(false)" id="btnDeduped">⬇ 重複削除済みCSV<span id="dedupeBadge"></span></button>
+      <button class="btn-dl outline" onclick="resetTool()">↺ リセット</button>
+    </div>
+  </div>
+
+</div>
+
+<script>
+// ============================================================
+// 郵便番号プレフィックス → 都道府県 対応表（オフラインフォールバック）
+// ============================================================
+const ZIP_PREF_MAP = [
+  [[1,8],'北海道'],[[40,69],'北海道'],[[70,100],'北海道'],
+  [[10,20],'秋田県'],[[20,30],'岩手県'],[[30,40],'青森県'],
+  [[100,209],'東京都'],[[210,260],'神奈川県'],[[260,300],'千葉県'],
+  [[300,320],'茨城県'],[[320,330],'栃木県'],[[330,370],'埼玉県'],
+  [[370,380],'群馬県'],[[380,400],'長野県'],[[400,420],'山梨県'],
+  [[420,440],'静岡県'],[[440,510],'愛知県'],[[500,510],'岐阜県'],
+  [[510,520],'三重県'],[[520,530],'滋賀県'],[[530,600],'大阪府'],
+  [[600,630],'京都府'],[[630,640],'奈良県'],[[640,650],'和歌山県'],
+  [[650,700],'兵庫県'],[[680,690],'鳥取県'],[[690,700],'島根県'],
+  [[700,720],'岡山県'],[[720,740],'広島県'],[[740,760],'山口県'],
+  [[760,770],'香川県'],[[770,780],'徳島県'],[[780,790],'高知県'],
+  [[790,800],'愛媛県'],[[800,840],'福岡県'],[[840,850],'佐賀県'],
+  [[850,860],'長崎県'],[[860,870],'熊本県'],[[870,880],'大分県'],
+  [[880,890],'宮崎県'],[[890,900],'鹿児島県'],[[900,920],'沖縄県'],
+  [[920,930],'石川県'],[[930,940],'富山県'],[[940,960],'新潟県'],
+  [[960,980],'福島県'],[[980,990],'宮城県'],[[990,1000],'山形県'],
+];
+
+function getExpectedPrefOffline(zip) {
+  const z = String(zip||'').replace(/-/g,'');
+  if (z.length !== 7 || !/^\d+$/.test(z)) return null;
+  const p = parseInt(z.slice(0,3));
+  for (const [[lo,hi], pref] of ZIP_PREF_MAP) {
+    if (p >= lo && p < hi) return pref;
+  }
+  return null;
+}
+
+function extractPref(addr) {
+  if (!addr) return null;
+  const m = String(addr).trim().match(/^(東京都|北海道|大阪府|京都府|.{2,3}[都道府県])/);
+  return m ? m[1] : null;
+}
+
+function fmtZip(z) {
+  const c = String(z||'').trim().replace(/-/g,'');
+  if (c.length === 7 && /^\d+$/.test(c)) return c.slice(0,3)+'-'+c.slice(3);
+  return z||'';
+}
+
+function checkZipFormat(zip) {
+  if (!zip||String(zip).trim()==='') return 'EMPTY';
+  const z = String(zip).trim().replace(/-/g,'');
+  if (!/^\d+$/.test(z)) return 'NON_DIGIT';
+  if (z.length !== 7) return `LENGTH_${z.length}`;
+  return 'OK';
+}
+
+// ============================================================
+// マンション名検出 & 部屋番号欠落チェック
+// ============================================================
+
+// 集合住宅・ビルを示す語尾・キーワード
+// ★ 後方に出るほど具体的な建物種別（前方のグランド等より優先されるよう末尾側を重視）
+const BUILDING_KEYWORDS = [
+  'マンション','アパート','コーポ','ハイツ','パレス','ガーデン','レジデンス',
+  'タワー','プラザ','ヒルズ','ハウス','テラス','コート','シティ',
+  'ライオンズ','ダイア','シャトー','メゾン','ウィング','フォレスト','クレスト',
+  'エクレール','プリンス','キャッスル','スカイ','ロイヤル','ドミール','ステージ',
+  'グランシア','サンハイツ','サンコーポ','ベルシア','グランコート','ユーハウス',
+  'ライフ','ビュー','エクセル','アベニュー','ネオ','オーク','エステ','ピア',
+  'デュオ','リバー','レック','サニー','ホームズ','ルミエール',
+  // ビルは号室なしでも許容ケースが多いので低リスクフラグ
+  'ビル',
+];
+
+function detectMissingRoom(addr) {
+  if (!addr || addr.trim() === '') return null;
+  const s = addr.replace(/[\s　]/g, ''); // スペース除去版
+
+  // 最も末尾寄りの建物キーワードを探す（グランドハイツ→ハイツ を優先）
+  let foundKw = null;
+  let foundEnd = -1; // キーワード終了位置
+  for (const kw of BUILDING_KEYWORDS) {
+    const pos = s.indexOf(kw);
+    if (pos < 0) continue;
+    const end = pos + kw.length;
+    if (end > foundEnd) { foundKw = kw; foundEnd = end; }
+  }
+  if (!foundKw) return null;
+
+  // ★ キーワードより後ろの文字列だけを対象に部屋番号を確認
+  const afterKw = s.slice(foundEnd);
+
+  // 部屋番号とみなすパターン（キーワード後ろにあるもの限定）
+  if (/[0-9０-９]+号室/.test(afterKw)) return null; // 101号室
+  if (/[0-9０-９]+室/.test(afterKw))   return null;  // 101室
+  if (/[0-9０-９]+号$/.test(afterKw))  return null;  // 末尾が〇号
+  if (/[0-9０-９]+[FfＦ]/.test(afterKw)) return null; // 3F, 40F
+  if (/[0-9０-９]{2,4}$/.test(afterKw)) return null;  // 末尾に2〜4桁数字（101等）
+  if (/\d+階/.test(afterKw))           return null;  // 〇階
+
+  // ビルは号室なしでも許容ケースが多いので低リスク
+  return { keyword: foundKw, lowRisk: foundKw === 'ビル' };
+}
+
+// ============================================================
+// 文字列類似度（簡易レーベンシュタイン）
+// ============================================================
+function similarity(a, b) {
+  if (!a || !b) return 0;
+  if (a === b) return 1;
+  const la = a.length, lb = b.length;
+  const dp = Array.from({length: la+1}, (_,i) => Array.from({length: lb+1}, (_,j) => i===0?j:j===0?i:0));
+  for (let i=1;i<=la;i++) for (let j=1;j<=lb;j++)
+    dp[i][j] = a[i-1]===b[j-1] ? dp[i-1][j-1] : 1+Math.min(dp[i-1][j], dp[i][j-1], dp[i-1][j-1]);
+  return 1 - dp[la][lb]/Math.max(la,lb);
+}
+
+// ============================================================
+// 郵便番号ルックアップ（yubinbango.github.io データ使用）
+// ============================================================
+// GitHub Pages は Access-Control-Allow-Origin: * を返すため
+// file:// (origin: null) からでも CORS エラーなく取得できる。
+// データは3桁プレフィックスごとに1ファイル（例: 100.js, 150.js）。
+// 1ファイルに同プレフィックスのすべての郵便番号が入っているため
+// リクエスト数が大幅に削減される。
+// ============================================================
+
+const apiCache   = {}; // zip7 → undefined/[]/'error'/[{pref,city,town}]
+const prefCache  = {}; // prefix3 → null/'error'/{last4: [pref,city,town,...]}
+
+async function fetchWithTimeout(url, ms=8000) {
+  const ctrl = new AbortController();
+  const tid  = setTimeout(() => ctrl.abort(), ms);
+  try {
+    const res = await fetch(url, { signal: ctrl.signal });
+    clearTimeout(tid);
+    return res;
+  } catch(e) {
+    clearTimeout(tid);
+    throw e;
+  }
+}
+
+async function fetchPrefixData(prefix3) {
+  if (prefCache[prefix3] !== undefined) return prefCache[prefix3];
+  const url = `https://yubinbango.github.io/yubinbango-data/data/${prefix3}.js`;
+  try {
+    const res = await fetchWithTimeout(url);
+    if (!res.ok) { prefCache[prefix3] = 'error'; return 'error'; }
+    const text = await res.text();
+    // JSONP形式: $yubin(100, {"0001":["都道府県","市区町村","町域",...], ...});
+    const m = text.match(/\$yubin\s*\(\s*\d+\s*,\s*(\{[\s\S]*?\})\s*\)/);
+    if (!m) { prefCache[prefix3] = 'error'; return 'error'; }
+    prefCache[prefix3] = JSON.parse(m[1]);
+    return prefCache[prefix3];
+  } catch(e) {
+    prefCache[prefix3] = 'error';
+    return 'error';
+  }
+}
+
+async function lookupZip(zip) {
+  const z = String(zip||'').replace(/-/g,'');
+  if (z.length !== 7 || !/^\d+$/.test(z)) return null;
+  if (apiCache[z] !== undefined) return apiCache[z];
+
+  const prefix3 = z.slice(0, 3);
+  const last4   = z.slice(3);
+
+  const data = await fetchPrefixData(prefix3);
+  if (data === 'error') {
+    apiCache[z] = 'error';
+    return 'error';
+  }
+
+  const entry = data[last4];
+  if (!entry || !entry[0]) {
+    // データファイルには存在するが該当エントリなし → 無効な郵便番号
+    apiCache[z] = [];
+    return [];
+  }
+
+  // yubinbango フォーマット: [都道府県, 市区町村, 町域, ?, ?, ?]
+  const result = [{
+    pref: entry[0] || '',
+    city: entry[1] || '',
+    town: entry[2] || '',
+    full: (entry[0]||'') + (entry[1]||'') + (entry[2]||''),
+  }];
+  apiCache[z] = result;
+  return result;
+}
+
+// 住所の正規化（半角・全角スペースをすべて除去）
+function normalizeAddr(s) {
+  return String(s||'').replace(/[\s　]/g, '');
+}
+
+// 住所とAPIの一致度を計算（都道府県+市区町村レベル）
+function compareAddr(inputAddr, apiResults) {
+  if (!inputAddr || !apiResults || apiResults.length === 0) return { match: 'unknown', corrections: [] };
+
+  const input = normalizeAddr(inputAddr);
+
+  // 各候補と比較
+  let bestMatch = null;
+  let bestScore = 0;
+  const corrections = [];
+
+  for (const r of apiResults) {
+    // API側も正規化（念のため）
+    const normPref     = normalizeAddr(r.pref);
+    const normCity     = normalizeAddr(r.city);
+    const normTown     = normalizeAddr(r.town || '');
+    const normPrefCity = normPref + normCity;
+    const normFull     = normPref + normCity + normTown;
+
+    // 都道府県一致チェック
+    const inputPref = extractPref(inputAddr);
+    if (inputPref && normalizeAddr(inputPref) !== normPref) {
+      corrections.push({ type: 'pref_mismatch', expected: r.pref, found: inputPref });
+      continue;
+    }
+
+    // 市区町村の前方一致チェック（スペース除去後に先頭一致で判定）
+    if (input.startsWith(normPrefCity) || input.includes(normCity)) {
+      // 都道府県+市区町村レベルで一致
+      const townMatched = normTown && normTown.length >= 2 && input.includes(normTown);
+      const townMismatch = normTown && normTown.length >= 2 && !input.includes(normTown);
+      const score = townMatched  ? 1.0
+                  : townMismatch ? 0.75   // 市区町村は合っているが町域名が不一致
+                  : input.startsWith(normPrefCity) ? 0.95
+                  : 0.88;
+      if (score > bestScore) { bestScore = score; bestMatch = r; }
+      // 町域名不一致を補正候補として記録
+      if (townMismatch) {
+        corrections.push({
+          type: 'town_mismatch',
+          expected: r.pref + r.city + (r.town || ''),
+          found: inputAddr.trim(),
+          score: 0.75,
+          correctTown: r.town || '',
+        });
+      }
+    } else {
+      // ① 市区町村名の末尾語尾（市/区/町/村/郡）が欠落しているケースを優先チェック
+      // 例: API="四日市市" / 入力="四日市" → 末尾「市」が欠落
+      const suffixMatch = normCity.match(/([市区町村郡])$/);
+      const cityWithoutSuffix = suffixMatch ? normCity.slice(0, -1) : '';
+      if (suffixMatch && cityWithoutSuffix.length >= 2 && input.includes(cityWithoutSuffix) && !input.includes(normCity)) {
+        // 語尾なしの名称は入力に含まれるが、語尾付きは含まれない → 語尾欠落
+        corrections.push({
+          type: 'suffix_missing',
+          expected: r.pref + r.city,
+          found: inputAddr.trim(),
+          missingChar: suffixMatch[1],
+          score: 0.7,
+        });
+        if (0.7 > bestScore) { bestScore = 0.7; bestMatch = r; }
+      } else {
+        // ② 類似度で判定
+        const cityScore = similarity(input.slice(0, normPrefCity.length + 4), normPrefCity);
+        const fullScore = similarity(input.slice(0, normFull.length + 4), normFull);
+        const score = Math.max(cityScore, fullScore);
+        if (score > bestScore) { bestScore = score; bestMatch = r; }
+        corrections.push({
+          type: 'city_mismatch',
+          expected: r.pref + r.city,
+          found: inputAddr.trim(),
+          score: cityScore,
+        });
+      }
+    }
+  }
+
+  if (bestScore >= 0.85) return { match: 'ok', api: bestMatch, score: bestScore, corrections: [] };
+  if (bestScore >= 0.5)  return { match: 'partial', api: bestMatch, score: bestScore, corrections };
+  return { match: 'mismatch', api: bestMatch, score: bestScore, corrections: apiResults.map(r=>({ type:'city_mismatch', expected: r.pref+r.city+(r.town||''), found: inputAddr.trim(), score: bestScore })) };
+}
+
+// ============================================================
+// CSV パーサー
+// ============================================================
+function parseCSV(text) {
+  const rows = [];
+  for (const line of text.split(/\r?\n/)) {
+    if (!line.trim()) continue;
+    const cols = []; let cur = '', inQ = false;
+    for (let i = 0; i < line.length; i++) {
+      const ch = line[i];
+      if (ch==='"') { if (inQ&&line[i+1]==='"'){cur+='"';i++;}else inQ=!inQ; }
+      else if (ch===','&&!inQ){cols.push(cur);cur='';}
+      else cur+=ch;
+    }
+    cols.push(cur);
+    rows.push(cols);
+  }
+  return rows;
+}
+
+function decodeFile(buffer) {
+  try { return new TextDecoder('utf-8',{fatal:true}).decode(buffer); } catch(e){}
+  try { return new TextDecoder('shift-jis').decode(buffer); } catch(e){}
+  return new TextDecoder('utf-8',{fatal:false}).decode(buffer);
+}
+
+// ============================================================
+// State
+// ============================================================
+let parsedRows=[], headers=[], resultRows=[];
+
+const dropZone = document.getElementById('dropZone');
+const fileInput = document.getElementById('fileInput');
+dropZone.addEventListener('dragover', e=>{e.preventDefault();dropZone.classList.add('over');});
+dropZone.addEventListener('dragleave', ()=>dropZone.classList.remove('over'));
+dropZone.addEventListener('drop', e=>{e.preventDefault();dropZone.classList.remove('over');if(e.dataTransfer.files[0])loadFile(e.dataTransfer.files[0]);});
+fileInput.addEventListener('change', e=>{if(e.target.files[0])loadFile(e.target.files[0]);});
+
+function loadFile(file) {
+  // エラーキャッシュのみクリア（成功済み結果は保持してAPI負荷を抑える）
+  Object.keys(apiCache).forEach(k => { if (apiCache[k] === 'error') delete apiCache[k]; });
+  Object.keys(prefCache).forEach(k => { if (prefCache[k] === 'error') delete prefCache[k]; });
+  const reader = new FileReader();
+  reader.onload = e => {
+    const text = decodeFile(e.target.result);
+    const rows = parseCSV(text);
+    if (rows.length < 2) { alert('データが見つかりません'); return; }
+    headers = rows[0];
+    parsedRows = rows.slice(1).filter(r=>r.some(c=>c.trim()));
+    dropZone.querySelector('p').innerHTML = `✅ <strong>${file.name}</strong> を読み込みました（${parsedRows.length}件）`;
+    dropZone.style.borderColor = '#27ae60';
+    document.getElementById('btnRun').disabled = false;
+  };
+  reader.readAsArrayBuffer(file);
+}
+
+function getColIdx(fieldId) {
+  const val = document.getElementById(fieldId).value.trim();
+  if (!val) return -1;
+  let idx = headers.findIndex(h=>h.trim()===val||h.trim().toLowerCase()===val.toLowerCase());
+  if (idx>=0) return idx;
+  const n = parseInt(val);
+  if (!isNaN(n)&&n>=1&&n<=headers.length) return n-1;
+  return headers.findIndex(h=>h.includes(val)||val.includes(h.trim()));
+}
+
+// ============================================================
+// Main
+// ============================================================
+async function runCheck() {
+  const colZipIdx      = getColIdx('colZip');
+  const colAddrIdx     = getColIdx('colAddr');      // AB列: お届け先住所
+  const colBillAddrIdx = getColIdx('colBillAddr');  // E列: 請求先住所（別送比較用）
+  const colOpluxIdx    = getColIdx('colOplux');
+  const useApi         = document.getElementById('useApi').checked;
+
+  if (colZipIdx<0){alert('郵便番号の列が見つかりません');return;}
+  if (colAddrIdx<0){alert('住所の列が見つかりません');return;}
+
+  document.getElementById('progress').style.display='block';
+  document.getElementById('results').style.display='none';
+  document.getElementById('btnRun').disabled=true;
+  document.getElementById('progressLabel').style.color='';
+
+  resultRows=[];
+  let cntOk=0,cntWarn=0,cntDanger=0,cntCorrected=0,cntBesso=0;
+
+  try {
+
+  // 重複排除 → プレフィックス単位で並列取得（yubinbango は3桁prefix1ファイル）
+  const uniqueZips=[...new Set(parsedRows.map(r=>(r[colZipIdx]||'').replace(/-/g,'').trim()).filter(z=>z.length===7&&/^\d+$/.test(z)))];
+  const zipApiMap={};
+  if (useApi && uniqueZips.length > 0) {
+    // まずプレフィックスファイルを並列取得（同一prefixはキャッシュで1回のみ）
+    const uniquePrefixes=[...new Set(uniqueZips.map(z=>z.slice(0,3)))];
+    const BATCH = 10;
+    let errorCount = 0;
+    for (let i=0;i<uniquePrefixes.length;i+=BATCH) {
+      const batch = uniquePrefixes.slice(i, i+BATCH);
+      const pct = Math.round(i/uniquePrefixes.length*40);
+      document.getElementById('progressBar').style.width=pct+'%';
+      document.getElementById('progressLabel').textContent=`郵便番号データ取得中... ${Math.min(i+BATCH,uniquePrefixes.length)}/${uniquePrefixes.length}ブロック`;
+      await Promise.all(batch.map(p=>fetchPrefixData(p)));
+    }
+    // 取得済みデータからzip単位でマップ作成（fetchなし・高速）
+    document.getElementById('progressBar').style.width='50%';
+    document.getElementById('progressLabel').textContent='住所マッピング中...';
+    for (const z of uniqueZips) {
+      const r = await lookupZip(z); // キャッシュから即時解決
+      zipApiMap[z] = r;
+      if(r === 'error') errorCount++;
+    }
+    // 全件エラーなら警告
+    if(errorCount === uniqueZips.length && uniqueZips.length > 0) {
+      document.getElementById('progressLabel').style.color='#e67e22';
+      document.getElementById('progressLabel').textContent=`⚠️ データ取得に失敗しました（インターネット接続を確認してください）。オフラインチェックのみ実行します。`;
+      await new Promise(r=>setTimeout(r,2000));
+      document.getElementById('progressLabel').style.color='';
+    }
+  }
+
+  for (let i=0;i<parsedRows.length;i++) {
+    const row=parsedRows[i];
+    // プログレスは10件ごとにのみDOM更新（頻繁な更新を避ける）
+    if(i%10===0||i===parsedRows.length-1){
+      const pct=50+Math.round((i+1)/parsedRows.length*50);
+      document.getElementById('progressBar').style.width=pct+'%';
+      document.getElementById('progressLabel').textContent=`住所照合中... ${i+1}/${parsedRows.length}件`;
+    }
+
+    const zip=(row[colZipIdx]||'').trim();
+    const addr=(row[colAddrIdx]||'').trim();       // AB列: お届け先住所
+    const billAddr=colBillAddrIdx>=0?(row[colBillAddrIdx]||'').trim():''; // E列: 請求先住所
+    const oplux=colOpluxIdx>=0?(row[colOpluxIdx]||'').trim():'';
+    const zipClean=zip.replace(/-/g,'');
+
+    const issues=[];
+    let severity='正常';
+    let apiResults=null;
+    let addrCompare=null;
+    let correctedAddr='';
+    let hasCorrected=false;
+    let isBesso=false;
+
+    // 1. フォーマット
+    const fmt=checkZipFormat(zip);
+    if(fmt==='EMPTY'){issues.push('郵便番号が空欄');severity='要確認';}
+    else if(fmt==='NON_DIGIT'){issues.push(`郵便番号に数字以外の文字: ${zip}`);severity='不備あり';}
+    else if(fmt!=='OK'){issues.push(`郵便番号桁数異常(${fmt}): ${zip}`);severity='不備あり';}
+
+    // 2. オフライン都道府県チェック
+    const expectedPrefOff=getExpectedPrefOffline(zip);
+    const billPref=extractPref(addr);
+    if(expectedPrefOff&&billPref&&normalizeAddr(expectedPrefOff)!==normalizeAddr(billPref)){
+      issues.push(`郵便番号(${fmtZip(zip)})の期待都道府県[${expectedPrefOff}] vs 住所[${billPref}] — 不一致`);
+      severity='不備あり';
+    }
+
+    // 3. API照合
+    if(useApi && fmt==='OK') {
+      const apiRaw = zipApiMap[zipClean];
+      if(apiRaw === 'error') {
+        // 通信失敗 → 有効性不明なので何もフラグしない（正常扱いを維持）
+      } else if(Array.isArray(apiRaw) && apiRaw.length === 0) {
+        // APIが応答したが該当なし → 本当に無効な郵便番号
+        issues.push('郵便番号が郵便番号データベースに存在しません');
+        if(severity==='正常') severity='要確認';
+      } else if(Array.isArray(apiRaw) && apiRaw.length > 0) {
+        apiResults = apiRaw;
+        addrCompare = compareAddr(addr, apiResults);
+        if(addrCompare.match === 'mismatch' || addrCompare.match === 'partial') {
+          const best = apiResults[0];
+          const correctBase = best.pref + best.city + (best.town ? best.town : '');
+          const addrAfterTown = extractAddrSuffix(addr, best);
+          correctedAddr = correctBase + (addrAfterTown ? ' ' + addrAfterTown : '');
+          hasCorrected = true;
+          // 不一致種別に応じたメッセージを表示
+          const suffixCorr     = addrCompare.corrections.find(c => c.type === 'suffix_missing');
+          const townMismatchCorr = addrCompare.corrections.find(c => c.type === 'town_mismatch');
+          if (suffixCorr) {
+            issues.push(`市区町村名の末尾「${suffixCorr.missingChar}」が欠落: 「${normalizeAddr(best.city).slice(0,-1)}」→ 正しくは「${best.city}」`);
+          } else if (townMismatchCorr) {
+            issues.push(`町域名が不一致: 入力「${townMismatchCorr.found.slice(0,40)}」→ 郵便番号の正しい町域は「${townMismatchCorr.correctTown}」`);
+          } else {
+            issues.push(`住所にAPI取得値と相違あり → 補正候補: ${correctBase}`);
+          }
+          if(severity==='正常') severity='補正あり';
+        }
+        // addrCompare.match === 'ok' → 正常
+      }
+      // apiRaw === undefined（まだ未取得）の場合は何もしない
+    }
+
+    // 4. AB列 vs E列 別送確認チェック
+    if(billAddr && addr) {
+      const normDel  = normalizeAddr(addr);
+      const normBill = normalizeAddr(billAddr);
+      if(normDel !== normBill) {
+        // 都道府県レベルで一致しているか確認（完全一致でなくても都道府県が違えば強調）
+        const delivPref = extractPref(addr);
+        const billPref2 = extractPref(billAddr);
+        const prefDiff  = delivPref && billPref2 && delivPref !== billPref2;
+        if(prefDiff) {
+          issues.push(`📦 別送確認: お届け先(${delivPref})と請求先(${billPref2})の都道府県が異なります`);
+        } else {
+          issues.push(`📦 別送確認: お届け先と請求先の住所が異なります（ギフト・別送の可能性）`);
+        }
+        isBesso = true;
+        if(severity==='正常') severity='別送確認';
+      }
+    }
+
+    // 5. O-PLUX
+    if(oplux){
+      if(oplux.includes('存在しない購入者住所')||oplux.includes('存在しない配送先住所')||oplux.includes('存在しない住所')){
+        issues.push('O-PLUX: 存在しない住所が検知');
+        severity='不備あり';
+      }
+      if(oplux.includes('共有ネガティブ一致')){
+        issues.push('O-PLUX: 過去不審住所リストに一致');
+        if(severity==='正常') severity='要確認';
+      }
+      if(oplux.includes('IPアドレスから推定')&&oplux.includes('大幅に異なる')){
+        issues.push('O-PLUX: IPアドレス推定地域と住所が乖離');
+        if(severity==='正常') severity='要確認';
+      }
+    }
+
+    // 6. マンション名検出 & 部屋番号欠落チェック
+    const roomCheck = detectMissingRoom(addr);
+    if(roomCheck) {
+      if(roomCheck.lowRisk) {
+        issues.push(`ビル名らしき記載あり（部屋・フロアの記入漏れの可能性）: 「${roomCheck.keyword}」`);
+      } else {
+        issues.push(`マンション名らしき記載あり、部屋番号の記入漏れの可能性があります（検出語: 「${roomCheck.keyword}」）`);
+      }
+      if(severity==='正常') severity='要確認';
+    }
+
+    if(severity==='正常') cntOk++;
+    else if(severity==='補正あり') {} // counted separately
+    else if(severity==='要確認') cntWarn++;
+    else if(severity==='不備あり') cntDanger++;
+    else if(severity==='別送確認') cntBesso++;
+    if(isBesso) cntBesso = resultRows.filter(r=>r.isBesso).length + 1; // 後で recount
+
+    const addrPref = extractPref(addr);
+    resultRows.push({
+      original:[...row], zip, addr, billAddr, oplux,
+      fmtZip:fmtZip(zip), expectedPref:expectedPrefOff||'',
+      addrPref, severity, issues, apiResults, addrCompare,
+      correctedAddr, hasCorrected, isBesso,
+      _rowNum: i+2,
+      colZipIdx, colAddrIdx,
+    });
+  }
+
+  // 重複除去（A〜G列(0-6), Z列(25), AA列(26), AB列(27) が完全一致する行を削除）
+  const DEDUP_COLS = [0,1,2,3,4,5,6,25,26,27];
+  const seenKeys = new Set();
+  const originalCount = resultRows.length;
+  resultRows = resultRows.filter(r => {
+    const key = DEDUP_COLS.map(i => r.original[i] ?? '').join('\t');
+    if (seenKeys.has(key)) return false;
+    seenKeys.add(key);
+    return true;
+  });
+  const removedCount = originalCount - resultRows.length;
+
+  // recount（重複除去後）
+  cntOk        = resultRows.filter(r=>r.severity==='正常').length;
+  cntWarn      = resultRows.filter(r=>r.severity==='要確認').length;
+  cntDanger    = resultRows.filter(r=>r.severity==='不備あり').length;
+  cntCorrected = resultRows.filter(r=>r.hasCorrected).length;
+  cntBesso     = resultRows.filter(r=>r.isBesso).length;
+
+  document.getElementById('cntTotal').textContent=resultRows.length;
+  document.getElementById('cntOk').textContent=cntOk;
+  document.getElementById('cntWarn').textContent=cntWarn;
+  document.getElementById('cntDanger').textContent=cntDanger;
+  document.getElementById('cntCorrected').textContent=cntCorrected;
+  document.getElementById('cntBesso').textContent=cntBesso;
+
+  setFilter('all'); // フィルターをリセットして全件表示
+  renderIssues(colZipIdx, colAddrIdx);
+  renderTable(colZipIdx, colAddrIdx, colBillAddrIdx, colOpluxIdx);
+
+  // 重複除去件数を全件カードに表示
+  const notice=document.getElementById('dedupNotice');
+  if(notice){ if(removedCount>0){ notice.textContent=`🔁 重複 ${removedCount}件除外済`; notice.style.display='block'; } else { notice.style.display='none'; } }
+  // バッジは除去済みなので非表示
+  const badge=document.getElementById('dedupeBadge');
+  if(badge){ badge.style.display='none'; }
+
+  document.getElementById('progress').style.display='none';
+  document.getElementById('results').style.display='block';
+  document.getElementById('btnRun').disabled=false;
+  document.getElementById('results').scrollIntoView({behavior:'smooth',block:'start'});
+
+  } catch(err) {
+    // 処理中に予期しないエラーが発生した場合はUIに表示
+    console.error('[住所検証ツール] 処理エラー:', err);
+    document.getElementById('progressBar').style.width='100%';
+    document.getElementById('progressLabel').style.color='#e74c3c';
+    document.getElementById('progressLabel').textContent=`⚠️ エラーが発生しました: ${err.message} （ブラウザのコンソール(F12)で詳細を確認できます）`;
+    document.getElementById('btnRun').disabled=false;
+  }
+}
+
+// 住所のうち番地以降を抽出（API町域名の後の部分）
+function extractAddrSuffix(addr, apiResult) {
+  const base = normalizeAddr(apiResult.pref + apiResult.city + (apiResult.town||''));
+  const a = normalizeAddr(addr);
+  // Try to find where the base ends and suffix begins
+  for (let len=Math.min(base.length,a.length); len>=2; len--) {
+    if (a.includes(base.slice(-len))) {
+      const pos = a.indexOf(base.slice(-len))+len;
+      return a.slice(pos);
+    }
+  }
+  // Fallback: extract numbers at the end
+  const m = addr.match(/[\d\-－–〜番地号室棟階以降]+.*$/);
+  return m ? m[0] : '';
+}
+
+// ============================================================
+// フィルター
+// ============================================================
+let activeFilter = 'all';
+let _lastRenderArgs = null;
+
+function setFilter(f) {
+  activeFilter = f;
+  // カードのアクティブ状態を更新
+  const cardKeys = {'all':'all','正常':'ok','補正あり':'corrected','要確認':'warn','不備あり':'danger','別送確認':'besso'};
+  Object.entries(cardKeys).forEach(([filter, cardKey]) => {
+    const el = document.getElementById('card-'+cardKey);
+    if(el) el.classList.toggle('active', filter===f);
+  });
+  // 「正常」フィルターは全データタブに自動切替（問題一覧には出ないため）
+  if(f === '正常') switchTab('all');
+  if(_lastRenderArgs) {
+    renderIssues(..._lastRenderArgs);
+    renderTable(..._lastRenderArgs);
+  }
+}
+
+function filterRows(rows) {
+  if(activeFilter==='all') return rows;
+  if(activeFilter==='正常')   return rows.filter(r=>r.severity==='正常');
+  if(activeFilter==='補正あり') return rows.filter(r=>r.hasCorrected);
+  if(activeFilter==='要確認')  return rows.filter(r=>r.severity==='要確認');
+  if(activeFilter==='不備あり') return rows.filter(r=>r.severity==='不備あり');
+  if(activeFilter==='別送確認') return rows.filter(r=>r.isBesso);
+  return rows;
+}
+
+// ============================================================
+// Render
+// ============================================================
+function renderIssues(colZipIdx, colAddrIdx) {
+  _lastRenderArgs = [colZipIdx, colAddrIdx];
+  const list=document.getElementById('issueList');
+
+  const filtered = filterRows(resultRows);
+
+  // 正常フィルターは全データタブに委譲（問題一覧には問題行のみ表示）
+  if(activeFilter === '正常') {
+    list.innerHTML='<div class="empty">✅ 正常行は「全データ」タブに切り替えて表示しています。</div>';
+    return;
+  }
+
+  const viewRows = activeFilter==='all'
+    ? filtered.filter(r=>r.severity!=='正常')
+    : filtered;
+
+  if(viewRows.length===0){
+    list.innerHTML='<div class="empty">'+(activeFilter==='all'?'🎉 問題は検知されませんでした。全件正常です。':'該当する行がありません。')+'</div>';
+    return;
+  }
+
+  // カテゴリごとにグループ化
+  const dangers      = viewRows.filter(r=>r.severity==='不備あり');
+  const allCorrected = viewRows.filter(r=>r.hasCorrected);
+  const warns        = viewRows.filter(r=>r.severity==='要確認');
+  const bessos       = viewRows.filter(r=>r.isBesso && r.severity==='別送確認');
+
+  let html='';
+  let pt=4;
+  if(dangers.length){
+    html+=`<h3 style="font-size:14px;font-weight:700;color:#c0392b;margin:0 0 10px;padding-top:${pt}px;">🚨 不備あり — ${dangers.length}件</h3>`;
+    for(const r of dangers) html+=buildCard(r,'danger'); pt=18;
+  }
+  if(allCorrected.length){
+    html+=`<h3 style="font-size:14px;font-weight:700;color:#7d3c98;margin:0 0 10px;padding-top:${pt}px;">🔧 住所補正候補あり — ${allCorrected.length}件</h3>`;
+    for(const r of allCorrected) html+=buildCard(r,'corrected'); pt=18;
+  }
+  if(warns.length){
+    html+=`<h3 style="font-size:14px;font-weight:700;color:#d35400;margin:0 0 10px;padding-top:${pt}px;">⚠️ 要確認 — ${warns.length}件</h3>`;
+    for(const r of warns) html+=buildCard(r,'warning'); pt=18;
+  }
+  if(bessos.length){
+    html+=`<h3 style="font-size:14px;font-weight:700;color:#16a085;margin:0 0 10px;padding-top:${pt}px;">📦 別送確認 — ${bessos.length}件</h3>`;
+    for(const r of bessos) html+=buildCard(r,'besso');
+  }
+  list.innerHTML=html;
+}
+
+function buildCard(r, cls) {
+  const zip_=r.fmtZip;
+  const addr_=r.addr.slice(0,70)+(r.addr.length>70?'…':'');
+  const issues=r.issues.map(i=>`<li>${escHtml(i)}</li>`).join('');
+
+  let bessoBox='';
+  if(r.isBesso && r.billAddr) {
+    bessoBox=`
+      <div class="correction-box" style="border-color:#16a085;background:#f0fbf9;">
+        <div class="correction-title" style="color:#16a085;">📦 別送確認（AB列 vs E列）</div>
+        <div class="correction-row">
+          <span style="font-size:11px;color:#888;">お届け先(AB):</span>
+          <span class="correction-field" style="border-color:#b2dfdb;">${escHtml(r.addr.slice(0,50))}</span>
+        </div>
+        <div class="correction-row" style="margin-top:5px;">
+          <span style="font-size:11px;color:#888;">請求先(E):</span>
+          <span class="correction-field" style="border-color:#b2dfdb;">${escHtml(r.billAddr.slice(0,50))}</span>
+        </div>
+      </div>`;
+  }
+
+  let corrBox='';
+  if(r.hasCorrected && r.correctedAddr) {
+    const api=r.apiResults?.[0];
+    corrBox=`
+      <div class="correction-box">
+        <div class="correction-title">🔧 補正候補（郵便番号${escHtml(zip_)}から取得）</div>
+        <div class="correction-row">
+          <span style="font-size:11px;color:#888;">入力:</span>
+          <span class="correction-field addr-orig">${escHtml(r.addr.slice(0,50))}</span>
+          <span class="addr-arrow">→</span>
+          <span style="font-size:11px;color:#888;">補正:</span>
+          <span class="correction-field addr-correct">${escHtml(r.correctedAddr.slice(0,60))}</span>
+        </div>
+        ${api?`<div style="font-size:11px;color:#888;margin-top:5px;">API取得: ${escHtml(api.pref)} ${escHtml(api.city)} ${escHtml(api.town||'')}</div>`:''}
+      </div>`;
+  }
+
+  const badgeCls = cls==='corrected'?'corrected':cls==='besso'?'besso':cls;
+  return `
+    <div class="issue-item ${cls}">
+      <div class="issue-header">
+        <span class="badge ${badgeCls}">${r.severity}</span>
+        <span class="issue-zip">行 ${r._rowNum} ／ 郵便番号: ${escHtml(zip_)}</span>
+      </div>
+      <div class="issue-addr">📍 ${escHtml(addr_)}</div>
+      <ul class="issue-reasons">${issues}</ul>
+      ${bessoBox}${corrBox}
+    </div>`;
+}
+
+function renderTable(colZipIdx, colAddrIdx, colBillAddrIdx, colOpluxIdx) {
+  // C列(2), F列(5), G列(6) を先頭に固定表示し、設定列を後続に追加
+  const show=[2, 5, 6, colZipIdx, colAddrIdx, ...(colBillAddrIdx>=0?[colBillAddrIdx]:[]), ...(colOpluxIdx>=0?[colOpluxIdx]:[])].filter((v,i,a)=>v>=0&&a.indexOf(v)===i);
+  const extras=['郵便番号(ハイフン付)','API取得住所','住所一致度','住所検証ステータス','別送','検知内容','補正候補住所'];
+
+  let thHtml='<tr><th>#</th>';
+  for(const ci of show) thHtml+=`<th>${escHtml(headers[ci]||'列'+(ci+1))}</th>`;
+  for(const e of extras) thHtml+=`<th class="extra">${escHtml(e)}</th>`;
+  thHtml+='</tr>';
+  document.getElementById('tableHead').innerHTML=thHtml;
+
+  const filtered = filterRows(resultRows);
+  let tbHtml='';
+  for(const r of filtered){
+    const rc=r.severity==='不備あり'?'row-danger':r.isBesso?'row-besso':r.hasCorrected?'row-corrected':r.severity==='要確認'?'row-warning':'';
+    tbHtml+=`<tr class="${rc}"><td style="color:#aaa;font-size:11px;">${r._rowNum}</td>`;
+    for(const ci of show) tbHtml+=`<td>${escHtml((r.original[ci]||'').slice(0,80))}</td>`;
+    tbHtml+=`<td class="extra">${escHtml(r.fmtZip)}</td>`;
+    const apiStr=r.apiResults?r.apiResults.map(a=>a.pref+a.city+(a.town||'')).join(' / '):'—';
+    tbHtml+=`<td class="extra" style="font-size:11px;">${escHtml(apiStr.slice(0,60))}</td>`;
+    const matchStr=r.addrCompare?{ok:'✅ 一致',partial:'⚠ 部分一致',mismatch:'❌ 不一致',unknown:'—'}[r.addrCompare.match]:'—';
+    tbHtml+=`<td class="extra" style="font-size:11px;">${matchStr}</td>`;
+    const sv=r.severity;
+    const bc=sv==='不備あり'?'danger':sv==='要確認'?'warning':sv==='別送確認'?'besso':r.hasCorrected?'corrected':'ok';
+    tbHtml+=`<td class="extra"><span class="badge ${bc}">${escHtml(sv)}</span></td>`;
+    tbHtml+=`<td class="extra" style="font-size:11px;text-align:center;">${r.isBesso?'<span style="color:#16a085;font-weight:700;">📦 別送</span>':'—'}</td>`;
+    tbHtml+=`<td class="extra" style="font-size:11px;">${escHtml(r.issues.join(' / ').slice(0,100))}</td>`;
+    tbHtml+=`<td class="extra" style="font-size:11px;color:#7d3c98;">${escHtml((r.correctedAddr||'').slice(0,60))}</td>`;
+    tbHtml+='</tr>';
+  }
+  document.getElementById('tableBody').innerHTML=tbHtml;
+}
+
+function switchTab(name){
+  document.querySelectorAll('.tab').forEach((t,i)=>t.classList.toggle('active',['issues','all'][i]===name));
+  document.querySelectorAll('.tab-panel').forEach(p=>p.classList.remove('active'));
+  document.getElementById('tab-'+name).classList.add('active');
+}
+
+// ============================================================
+// Download
+// ============================================================
+function toRow(cols){return cols.map(c=>{const s=String(c||'');return(s.includes(',')||s.includes('"')||s.includes('\n'))?`"${s.replace(/"/g,'""')}"`:s;}).join(',');}
+
+function downloadCSV(applyCorrection){
+  const extras=['郵便番号(ハイフン付)','API取得住所','住所一致度','住所検証ステータス','検知内容','補正候補住所'];
+  const rows=[toRow([...headers,...extras])];
+  for(const r of resultRows){
+    const orig=[...r.original];
+    if(applyCorrection&&r.hasCorrected&&r.correctedAddr) orig[r.colAddrIdx]=r.correctedAddr;
+    const api=r.apiResults?r.apiResults.map(a=>a.pref+a.city+(a.town||'')).join(' / '):'';
+    const match=r.addrCompare?{ok:'一致',partial:'部分一致',mismatch:'不一致',unknown:''}[r.addrCompare.match]:'';
+    rows.push(toRow([...orig,r.fmtZip,api,match,r.severity,r.issues.join(' / '),r.correctedAddr||'']));
+  }
+  const bom='\uFEFF';
+  const blob=new Blob([bom+rows.join('\n')],{type:'text/csv;charset=utf-8;'});
+  const a=document.createElement('a');
+  a.href=URL.createObjectURL(blob);
+  a.download=applyCorrection?'住所補正済みデータ.csv':'住所検証済みデータ.csv';
+  a.click();
+}
+
+function downloadIssuesOnly(){
+  const extras=['郵便番号(ハイフン付)','API取得住所','住所一致度','住所検証ステータス','検知内容','補正候補住所'];
+  const rows=[toRow([...headers,...extras])];
+  for(const r of resultRows){
+    if(r.severity==='正常'&&!r.hasCorrected) continue;
+    const api=r.apiResults?r.apiResults.map(a=>a.pref+a.city+(a.town||'')).join(' / '):'';
+    const match=r.addrCompare?{ok:'一致',partial:'部分一致',mismatch:'不一致',unknown:''}[r.addrCompare.match]:'';
+    rows.push(toRow([...r.original,r.fmtZip,api,match,r.severity,r.issues.join(' / '),r.correctedAddr||'']));
+  }
+  const bom='\uFEFF';
+  const blob=new Blob([bom+rows.join('\n')],{type:'text/csv;charset=utf-8;'});
+  const a=document.createElement('a');
+  a.href=URL.createObjectURL(blob);a.download='問題行抽出.csv';a.click();
+}
+
+function downloadDeduped(){
+  // A〜G(0-6)、Z(25)、AA(26)、AB(27) 列が完全一致する行を重複とみなす（最初に現れた行を残す）
+  const DEDUP_COLS = [0,1,2,3,4,5,6,25,26,27];
+  const seen = new Set();
+  const unique = [];
+  let dupCount = 0;
+  for(const r of resultRows){
+    const key = DEDUP_COLS.map(i => r.original[i] ?? '').join('\t');
+    if(seen.has(key)){ dupCount++; continue; }
+    seen.add(key);
+    unique.push(r);
+  }
+  if(dupCount === 0){
+    alert('重複している行はありませんでした。');
+    return;
+  }
+  const extras=['郵便番号(ハイフン付)','API取得住所','住所一致度','住所検証ステータス','検知内容','補正候補住所'];
+  const rows=[toRow([...headers,...extras])];
+  for(const r of unique){
+    const api=r.apiResults?r.apiResults.map(a=>a.pref+a.city+(a.town||'')).join(' / '):'';
+    const match=r.addrCompare?{ok:'一致',partial:'部分一致',mismatch:'不一致',unknown:''}[r.addrCompare.match]:'';
+    rows.push(toRow([...r.original,r.fmtZip,api,match,r.severity,r.issues.join(' / '),r.correctedAddr||'']));
+  }
+  const bom='\uFEFF';
+  const blob=new Blob([bom+rows.join('\n')],{type:'text/csv;charset=utf-8;'});
+  const a=document.createElement('a');
+  a.href=URL.createObjectURL(blob);
+  a.download='重複削除済みデータ.csv';
+  a.click();
+  alert(`重複行 ${dupCount} 件を削除しました。\n元データ: ${resultRows.length} 件 → 出力: ${unique.length} 件`);
+}
+
+function resetTool(){
+  document.getElementById('results').style.display='none';
+  document.getElementById('progress').style.display='none';
+  dropZone.querySelector('p').innerHTML='ここにCSVをドラッグ＆ドロップ、またはクリックして選択';
+  dropZone.style.borderColor='#b0c4de';
+  document.getElementById('fileInput').value='';
+  document.getElementById('btnRun').disabled=true;
+  parsedRows=[];headers=[];resultRows=[];
+  activeFilter='all'; _lastRenderArgs=null;
+  const _n=document.getElementById('dedupNotice'); if(_n) _n.style.display='none';
+  document.getElementById('cntTotal').textContent='0';
+  // エラーキャッシュのみクリア（成功済み結果は保持）
+  Object.keys(apiCache).forEach(k => { if (apiCache[k] === 'error') delete apiCache[k]; });
+  Object.keys(prefCache).forEach(k => { if (prefCache[k] === 'error') delete prefCache[k]; });
+}
+
+function escHtml(s){return String(s||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');}
+</script>
+</body>
+</html>
