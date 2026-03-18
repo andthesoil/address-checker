@@ -640,28 +640,42 @@ async function runCheck() {
   try {
 
   // 重複排除 → プレフィックス単位で並列取得（yubinbango は3桁prefix1ファイル）
+  const totalRows = parsedRows.length;
   const uniqueZips=[...new Set(parsedRows.map(r=>(r[colZipIdx]||'').replace(/-/g,'').trim()).filter(z=>z.length===7&&/^\d+$/.test(z)))];
   const zipApiMap={};
+
+  function updateProgress(phase1Done, phase2Done) {
+    // phase1: 0〜50%（郵便番号取得）、phase2: 50〜100%（行照合）
+    const pct = phase1Done + phase2Done;
+    document.getElementById('progressBar').style.width = Math.min(pct, 100) + '%';
+  }
+
   if (useApi && uniqueZips.length > 0) {
-    // まずプレフィックスファイルを並列取得（同一prefixはキャッシュで1回のみ）
     const uniquePrefixes=[...new Set(uniqueZips.map(z=>z.slice(0,3)))];
     const BATCH = 10;
     let errorCount = 0;
+    let resolvedZips = 0;
+
     for (let i=0;i<uniquePrefixes.length;i+=BATCH) {
       const batch = uniquePrefixes.slice(i, i+BATCH);
-      const pct = Math.round(i/uniquePrefixes.length*40);
-      document.getElementById('progressBar').style.width=pct+'%';
-      document.getElementById('progressLabel').textContent=`郵便番号データ取得中... ${Math.min(i+BATCH,uniquePrefixes.length)}/${uniquePrefixes.length}ブロック（失敗時は最大3回リトライ）`;
       await Promise.all(batch.map(p=>fetchPrefixData(p)));
+
+      // このバッチで何件のZIPが解決できるようになったか集計
+      resolvedZips = uniqueZips.filter(z => prefCache[z.slice(0,3)] !== undefined && prefCache[z.slice(0,3)] !== 'error').length;
+      const pct1 = Math.round(resolvedZips / totalRows * 50);
+      updateProgress(pct1, 0);
+      document.getElementById('progressLabel').textContent =
+        `郵便番号照合中... ${resolvedZips}/${totalRows}件（失敗時は最大3回リトライ）`;
     }
-    // 取得済みデータからzip単位でマップ作成（fetchなし・高速）
-    document.getElementById('progressBar').style.width='50%';
-    document.getElementById('progressLabel').textContent='住所マッピング中...';
+
+    // 取得済みデータからzip単位でマップ作成
     for (const z of uniqueZips) {
-      const r = await lookupZip(z); // キャッシュから即時解決
+      const r = await lookupZip(z);
       zipApiMap[z] = r;
       if(r === 'error') errorCount++;
     }
+    updateProgress(50, 0);
+
     // 全件エラーなら警告
     if(errorCount === uniqueZips.length && uniqueZips.length > 0) {
       document.getElementById('progressLabel').style.color='#e67e22';
@@ -673,11 +687,11 @@ async function runCheck() {
 
   for (let i=0;i<parsedRows.length;i++) {
     const row=parsedRows[i];
-    // プログレスは10件ごとにのみDOM更新（頻繁な更新を避ける）
-    if(i%10===0||i===parsedRows.length-1){
-      const pct=50+Math.round((i+1)/parsedRows.length*50);
-      document.getElementById('progressBar').style.width=pct+'%';
-      document.getElementById('progressLabel').textContent=`住所照合中... ${i+1}/${parsedRows.length}件`;
+    // プログレスは5件ごとにDOM更新
+    if(i%5===0||i===parsedRows.length-1){
+      const pct2 = Math.round((i+1)/totalRows*50);
+      updateProgress(50, pct2);
+      document.getElementById('progressLabel').textContent=`住所照合中... ${i+1}/${totalRows}件`;
     }
 
     const zip=(row[colZipIdx]||'').trim();
