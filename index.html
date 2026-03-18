@@ -388,42 +388,48 @@ function similarity(a, b) {
 
 const apiCache  = {}; // zip7 → undefined/[]/'error'/[{pref,city,town}]
 const prefCache = {}; // prefix3 → 'error'/{last4:[pref,city,town,...]}
+const scriptResolvers = {}; // prefix3 → resolve関数
 
-async function fetchWithTimeout(url, ms=15000) {
-  const ctrl = new AbortController();
-  const tid  = setTimeout(() => ctrl.abort(), ms);
-  try {
-    const res = await fetch(url, { signal: ctrl.signal });
-    clearTimeout(tid);
-    return res;
-  } catch(e) {
-    clearTimeout(tid);
-    throw e;
+// yubinbango JSONPコールバック（<script>タグで呼ばれる）
+// 第1引数がプレフィックス番号なので並列ロードでも正しくルーティングできる
+window.$yubin = function(code, data) {
+  const prefix3 = String(code).padStart(3, '0');
+  prefCache[prefix3] = data;
+  if (scriptResolvers[prefix3]) {
+    scriptResolvers[prefix3](data);
+    delete scriptResolvers[prefix3];
   }
-}
+};
 
-// yubinbango（GitHub Pages / Access-Control-Allow-Origin: * / JSONP形式）
-async function fetchPrefixData(prefix3) {
-  if (prefCache[prefix3] !== undefined) return prefCache[prefix3];
-  const url = `https://yubinbango.github.io/yubinbango-data/data/${prefix3}.js`;
-  const MAX_RETRY = 3;
-  const RETRY_DELAY = [1000, 2000, 3000];
-  for (let attempt = 0; attempt < MAX_RETRY; attempt++) {
-    try {
-      if (attempt > 0) await new Promise(r => setTimeout(r, RETRY_DELAY[attempt - 1]));
-      const res = await fetchWithTimeout(url);
-      if (!res.ok) continue;
-      const text = await res.text();
-      const m = text.match(/\$yubin\s*\(\s*\d+\s*,\s*(\{[\s\S]*?\})\s*\)/);
-      if (!m) continue;
-      prefCache[prefix3] = JSON.parse(m[1]);
-      return prefCache[prefix3];
-    } catch(e) {
-      if (attempt === MAX_RETRY - 1) { prefCache[prefix3] = 'error'; return 'error'; }
-    }
+// <script>タグ経由でロード（CORSを完全バイパス・fetch不使用）
+function fetchPrefixData(prefix3) {
+  if (prefCache[prefix3] !== undefined) return Promise.resolve(prefCache[prefix3]);
+  if (prefix3 in scriptResolvers) {
+    // 同じprefixを並列リクエスト中 → 同じPromiseに相乗り
+    return new Promise(resolve => {
+      const prev = scriptResolvers[prefix3];
+      scriptResolvers[prefix3] = (data) => { prev(data); resolve(data); };
+    });
   }
-  prefCache[prefix3] = 'error';
-  return 'error';
+  return new Promise(resolve => {
+    scriptResolvers[prefix3] = resolve;
+    const script = document.createElement('script');
+    script.src = `https://yubinbango.github.io/yubinbango-data/data/${prefix3}.js`;
+    script.onerror = () => {
+      prefCache[prefix3] = 'error';
+      if (scriptResolvers[prefix3]) { scriptResolvers[prefix3]('error'); delete scriptResolvers[prefix3]; }
+    };
+    script.onload = () => { try { document.head.removeChild(script); } catch(e) {} };
+    // 15秒タイムアウト
+    setTimeout(() => {
+      if (scriptResolvers[prefix3]) {
+        prefCache[prefix3] = 'error';
+        scriptResolvers[prefix3]('error');
+        delete scriptResolvers[prefix3];
+      }
+    }, 15000);
+    document.head.appendChild(script);
+  });
 }
 
 async function lookupZip(zip) {
@@ -632,7 +638,7 @@ async function runCheck() {
 
   if (useApi && uniqueZips.length > 0) {
     const uniquePrefixes = [...new Set(uniqueZips.map(z => z.slice(0,3)))];
-    const BATCH = 10;
+    const BATCH = 20; // <script>タグはfetchより並列数を増やせる
     let errorCount = 0;
     let fetchedPrefixes = 0;
 
