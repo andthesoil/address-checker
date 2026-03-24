@@ -1014,8 +1014,9 @@ function renderTable(colZipIdx, colAddrIdx, colBillAddrIdx, colOpluxIdx, colOrde
     const rc=r.severity==='不備あり'?'row-danger':r.isBesso?'row-besso':r.hasCorrected?'row-corrected':r.severity==='要確認'?'row-warning':'';
     const firstVal = r._orderNum || r._rowNum;
     tbHtml+=`<tr id="table-row-${r._rowNum}" class="${rc}"><td style="color:#333;font-size:11px;">${escHtml(String(firstVal))}</td>`;
-    for(const ci of show) tbHtml+=`<td>${escHtml((r.original[ci]||'').slice(0,80))}</td>`;
-    tbHtml+=`<td class="extra">${escHtml(r.fmtZip)}</td>`;
+    const SMALL_FONT_HDRS = new Set(['請求先（名前）','請求先（電話番号）','メールアドレス','お届け先（郵便番号）','お届け先（住所）']);
+    for(const ci of show){const sf=SMALL_FONT_HDRS.has(renameHeader(headers[ci]||''));tbHtml+=`<td${sf?' style="font-size:11px;"':''}>${escHtml((r.original[ci]||'').slice(0,80))}</td>`;}
+    tbHtml+=`<td class="extra" style="font-size:11px;">${escHtml(r.fmtZip)}</td>`;
     const apiStr=r.apiResults?r.apiResults.map(a=>a.pref+a.city+(a.town||'')).join(' / '):'—';
     tbHtml+=`<td class="extra" style="font-size:11px;">${escHtml(apiStr.slice(0,60))}</td>`;
     const matchStr=r.addrCompare?{ok:'✅ 一致',partial:'⚠ 部分一致',mismatch:'❌ 不一致',unknown:'—'}[r.addrCompare.match]:'—';
