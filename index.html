@@ -941,7 +941,7 @@ function renderTable(colZipIdx, colAddrIdx, colBillAddrIdx, colOpluxIdx, colOrde
   // C列(2), F列(5), G列(6) を先頭に固定表示し、設定列を後続に追加
   const show=[2, 5, 6, colZipIdx, colAddrIdx, ...(colBillAddrIdx>=0?[colBillAddrIdx]:[]), ...(colOpluxIdx>=0?[colOpluxIdx]:[])].filter((v,i,a)=>v>=0&&a.indexOf(v)===i);
   const extras=['郵便番号(ハイフン付)','API取得住所','住所一致度','住所検証ステータス','別送','検知内容','補正候補住所'];
-  const firstColLabel = (colOrderIdx >= 0 && headers[colOrderIdx]) ? escHtml(headers[colOrderIdx]) : (colOrderIdx >= 0 ? '受注番号' : '#');
+  const firstColLabel = (colOrderIdx >= 0 && headers[colOrderIdx]) ? escHtml(headers[colOrderIdx]) : '受注番号';
 
   let thHtml=`<tr><th>${firstColLabel}</th>`;
   for(const ci of show) thHtml+=`<th>${escHtml(headers[ci]||'列'+(ci+1))}</th>`;
