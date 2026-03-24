@@ -182,6 +182,10 @@ tr.row-besso td { background: #f0fbf9 !important; }
 
     <div class="config-row">
       <div class="config-item">
+        <label>受注番号 列名（または列番号）</label>
+        <input type="text" id="colOrder" value="" placeholder="例: 受注番号 または 1（A列）">
+      </div>
+      <div class="config-item">
         <label>郵便番号 列名（または列番号）</label>
         <input type="text" id="colZip" value="27" placeholder="例: 郵便番号 または 27（AA列）">
       </div>
@@ -555,6 +559,7 @@ function getColIdx(fieldId) {
 // Main
 // ============================================================
 async function runCheck() {
+  const colOrderIdx    = getColIdx('colOrder');     // 受注番号列（任意）
   const colZipIdx      = getColIdx('colZip');
   const colAddrIdx     = getColIdx('colAddr');      // AB列: お届け先住所
   const colBillAddrIdx = getColIdx('colBillAddr');  // E列: 請求先住所（別送比較用）
@@ -725,6 +730,7 @@ async function runCheck() {
       addrPref, severity, issues, apiResults, addrCompare,
       correctedAddr, hasCorrected, isBesso,
       _rowNum: i+2,
+      _orderNum: colOrderIdx >= 0 ? (row[colOrderIdx]||'').trim() : '',
       colZipIdx, colAddrIdx,
     });
   }
@@ -756,8 +762,8 @@ async function runCheck() {
   document.getElementById('cntBesso').textContent=cntBesso;
 
   setFilter('all'); // フィルターをリセットして全件表示
-  renderIssues(colZipIdx, colAddrIdx);
-  renderTable(colZipIdx, colAddrIdx, colBillAddrIdx, colOpluxIdx);
+  renderIssues(colZipIdx, colAddrIdx, colOrderIdx);
+  renderTable(colZipIdx, colAddrIdx, colBillAddrIdx, colOpluxIdx, colOrderIdx);
 
   // 重複除去件数を全件カードに表示
   const notice=document.getElementById('dedupNotice');
@@ -832,8 +838,8 @@ function filterRows(rows) {
 // ============================================================
 // Render
 // ============================================================
-function renderIssues(colZipIdx, colAddrIdx) {
-  _lastRenderArgs = [colZipIdx, colAddrIdx];
+function renderIssues(colZipIdx, colAddrIdx, colOrderIdx) {
+  _lastRenderArgs = [colZipIdx, colAddrIdx, colOrderIdx];
   const list=document.getElementById('issueList');
 
   const filtered = filterRows(resultRows);
@@ -923,7 +929,7 @@ function buildCard(r, cls) {
     <div class="issue-item ${cls}">
       <div class="issue-header">
         <span class="badge ${badgeCls}">${r.severity}</span>
-        <span class="issue-zip">行 ${r._rowNum} ／ 郵便番号: ${escHtml(zip_)}</span>
+        <span class="issue-zip">${r._orderNum ? '受注番号: ' + escHtml(r._orderNum) : '行 ' + r._rowNum} ／ 郵便番号: ${escHtml(zip_)}</span>
       </div>
       <div class="issue-addr">📍 ${escHtml(addr_)}</div>
       <ul class="issue-reasons">${issues}</ul>
@@ -931,12 +937,13 @@ function buildCard(r, cls) {
     </div>`;
 }
 
-function renderTable(colZipIdx, colAddrIdx, colBillAddrIdx, colOpluxIdx) {
+function renderTable(colZipIdx, colAddrIdx, colBillAddrIdx, colOpluxIdx, colOrderIdx) {
   // C列(2), F列(5), G列(6) を先頭に固定表示し、設定列を後続に追加
   const show=[2, 5, 6, colZipIdx, colAddrIdx, ...(colBillAddrIdx>=0?[colBillAddrIdx]:[]), ...(colOpluxIdx>=0?[colOpluxIdx]:[])].filter((v,i,a)=>v>=0&&a.indexOf(v)===i);
   const extras=['郵便番号(ハイフン付)','API取得住所','住所一致度','住所検証ステータス','別送','検知内容','補正候補住所'];
+  const firstColLabel = (colOrderIdx >= 0 && headers[colOrderIdx]) ? escHtml(headers[colOrderIdx]) : (colOrderIdx >= 0 ? '受注番号' : '#');
 
-  let thHtml='<tr><th>#</th>';
+  let thHtml=`<tr><th>${firstColLabel}</th>`;
   for(const ci of show) thHtml+=`<th>${escHtml(headers[ci]||'列'+(ci+1))}</th>`;
   for(const e of extras) thHtml+=`<th class="extra">${escHtml(e)}</th>`;
   thHtml+='</tr>';
@@ -946,7 +953,8 @@ function renderTable(colZipIdx, colAddrIdx, colBillAddrIdx, colOpluxIdx) {
   let tbHtml='';
   for(const r of filtered){
     const rc=r.severity==='不備あり'?'row-danger':r.isBesso?'row-besso':r.hasCorrected?'row-corrected':r.severity==='要確認'?'row-warning':'';
-    tbHtml+=`<tr class="${rc}"><td style="color:#aaa;font-size:11px;">${r._rowNum}</td>`;
+    const firstVal = r._orderNum || r._rowNum;
+    tbHtml+=`<tr class="${rc}"><td style="color:#aaa;font-size:11px;">${escHtml(String(firstVal))}</td>`;
     for(const ci of show) tbHtml+=`<td>${escHtml((r.original[ci]||'').slice(0,80))}</td>`;
     tbHtml+=`<td class="extra">${escHtml(r.fmtZip)}</td>`;
     const apiStr=r.apiResults?r.apiResults.map(a=>a.pref+a.city+(a.town||'')).join(' / '):'—';
