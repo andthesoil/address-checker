@@ -962,7 +962,7 @@ function renderTable(colZipIdx, colAddrIdx, colBillAddrIdx, colOpluxIdx, colOrde
   for(const r of filtered){
     const rc=r.severity==='不備あり'?'row-danger':r.isBesso?'row-besso':r.hasCorrected?'row-corrected':r.severity==='要確認'?'row-warning':'';
     const firstVal = r._orderNum || r._rowNum;
-    tbHtml+=`<tr class="${rc}"><td style="color:#aaa;font-size:11px;">${escHtml(String(firstVal))}</td>`;
+    tbHtml+=`<tr class="${rc}"><td style="color:#333;font-size:11px;">${escHtml(String(firstVal))}</td>`;
     for(const ci of show) tbHtml+=`<td>${escHtml((r.original[ci]||'').slice(0,80))}</td>`;
     tbHtml+=`<td class="extra">${escHtml(r.fmtZip)}</td>`;
     const apiStr=r.apiResults?r.apiResults.map(a=>a.pref+a.city+(a.town||'')).join(' / '):'—';
