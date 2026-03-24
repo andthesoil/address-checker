@@ -940,12 +940,20 @@ function buildCard(r, cls) {
 function renderTable(colZipIdx, colAddrIdx, colBillAddrIdx, colOpluxIdx, colOrderIdx) {
   // C列(2), F列(5), G列(6) を先頭に固定表示し、設定列を後続に追加
   const show=[2, 5, 6, colZipIdx, colAddrIdx, ...(colBillAddrIdx>=0?[colBillAddrIdx]:[]), ...(colOpluxIdx>=0?[colOpluxIdx]:[])].filter((v,i,a)=>v>=0&&a.indexOf(v)===i);
+  const HEADER_RENAME = {
+    '請求先（名前フル）':        '請求先（名前）',
+    '請求先（電話番号フル）':     '請求先（電話番号）',
+    'お届け先（郵便番号フル）':   'お届け先（郵便番号）',
+    'お届け先（住所フル空白あり）': 'お届け先（住所）',
+    '郵便番号(ハイフン付)':       '郵便番号',
+  };
+  const renameHeader = s => HEADER_RENAME[s] || s;
   const extras=['郵便番号(ハイフン付)','API取得住所','住所一致度','住所検証ステータス','別送','検知内容','補正候補住所'];
-  const firstColLabel = (colOrderIdx >= 0 && headers[colOrderIdx]) ? escHtml(headers[colOrderIdx]) : '受注番号';
+  const firstColLabel = (colOrderIdx >= 0 && headers[colOrderIdx]) ? escHtml(renameHeader(headers[colOrderIdx])) : '受注番号';
 
   let thHtml=`<tr><th>${firstColLabel}</th>`;
-  for(const ci of show) thHtml+=`<th>${escHtml(headers[ci]||'列'+(ci+1))}</th>`;
-  for(const e of extras) thHtml+=`<th class="extra">${escHtml(e)}</th>`;
+  for(const ci of show) thHtml+=`<th>${escHtml(renameHeader(headers[ci]||'列'+(ci+1)))}</th>`;
+  for(const e of extras) thHtml+=`<th class="extra">${escHtml(renameHeader(e))}</th>`;
   thHtml+='</tr>';
   document.getElementById('tableHead').innerHTML=thHtml;
 
