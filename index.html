@@ -99,6 +99,9 @@ td { padding: 8px 11px; border-bottom: 1px solid #f0f0f0; vertical-align: top; m
 tr.row-danger td { background: #fff9f9 !important; }
 tr.row-warning td { background: #fffef0 !important; }
 tr.row-corrected td { background: #faf5ff !important; }
+tr.row-checked td { background: #f0f0f0 !important; color: #aaa !important; opacity: 0.6; }
+tr.row-checked td * { color: #aaa !important; }
+.check-confirmed { width: 18px; height: 18px; cursor: pointer; accent-color: #4a90d9; }
 
 /* Badges */
 .badge { display: inline-block; padding: 2px 8px; border-radius: 20px; font-size: 11px; font-weight: 700; white-space: nowrap; }
@@ -939,7 +942,7 @@ function buildCard(r, cls) {
 
 function renderTable(colZipIdx, colAddrIdx, colBillAddrIdx, colOpluxIdx, colOrderIdx) {
   // C列(2), F列(5), G列(6) を先頭に固定表示し、設定列を後続に追加
-  const show=[2, 5, 6, colZipIdx, colAddrIdx, ...(colBillAddrIdx>=0?[colBillAddrIdx]:[]), ...(colOpluxIdx>=0?[colOpluxIdx]:[])].filter((v,i,a)=>v>=0&&a.indexOf(v)===i);
+  const show=[2, 5, 6, colZipIdx, colAddrIdx, ...(colBillAddrIdx>=0?[colBillAddrIdx]:[]), ...(colOpluxIdx>=0?[colOpluxIdx]:[])].filter((v,i,a)=>v>=0&&a.indexOf(v)===i&&v!==colOrderIdx);
   const HEADER_RENAME = {
     '請求先（名前フル）':        '請求先（名前）',
     '請求先（電話番号フル）':     '請求先（電話番号）',
@@ -954,7 +957,7 @@ function renderTable(colZipIdx, colAddrIdx, colBillAddrIdx, colOpluxIdx, colOrde
   let thHtml=`<tr><th>${firstColLabel}</th>`;
   for(const ci of show) thHtml+=`<th>${escHtml(renameHeader(headers[ci]||'列'+(ci+1)))}</th>`;
   for(const e of extras) thHtml+=`<th class="extra">${escHtml(renameHeader(e))}</th>`;
-  thHtml+='</tr>';
+  thHtml+='<th style="text-align:center;white-space:nowrap;">確認済</th></tr>';
   document.getElementById('tableHead').innerHTML=thHtml;
 
   const filtered = filterRows(resultRows);
@@ -975,6 +978,7 @@ function renderTable(colZipIdx, colAddrIdx, colBillAddrIdx, colOpluxIdx, colOrde
     tbHtml+=`<td class="extra" style="font-size:11px;text-align:center;">${r.isBesso?'<span style="color:#16a085;font-weight:700;">📦 別送</span>':'—'}</td>`;
     tbHtml+=`<td class="extra" style="font-size:11px;">${escHtml(r.issues.join(' / ').slice(0,100))}</td>`;
     tbHtml+=`<td class="extra" style="font-size:11px;color:#7d3c98;">${escHtml((r.correctedAddr||'').slice(0,60))}</td>`;
+    tbHtml+=`<td style="text-align:center;"><input type="checkbox" class="check-confirmed" onchange="toggleChecked(this)"></td>`;
     tbHtml+='</tr>';
   }
   document.getElementById('tableBody').innerHTML=tbHtml;
@@ -1068,6 +1072,15 @@ function resetTool(){
   const _n=document.getElementById('dedupNotice'); if(_n) _n.style.display='none';
   document.getElementById('cntTotal').textContent='0';
   Object.keys(apiCache).forEach(k => delete apiCache[k]);
+}
+
+function toggleChecked(cb) {
+  const tr = cb.closest('tr');
+  if (cb.checked) {
+    tr.classList.add('row-checked');
+  } else {
+    tr.classList.remove('row-checked');
+  }
 }
 
 function escHtml(s){return String(s||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');}
