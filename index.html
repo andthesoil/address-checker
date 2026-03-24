@@ -94,7 +94,7 @@ input:checked + .slider:before { transform: translateX(20px); }
 .table-wrap { background: white; border-radius: 0 0 12px 12px; box-shadow: 0 2px 8px rgba(0,0,0,0.06); overflow: auto; max-height: 620px; }
 table { width: 100%; border-collapse: collapse; font-size: 12px; }
 th { background: #f8f9fa; padding: 9px 11px; text-align: center; font-weight: 700; color: #555; position: sticky; top: 0; z-index: 10; white-space: nowrap; border-bottom: 2px solid #e9ecef; }
-th.extra { background: #f0eafa; }
+th.extra { background: #f0eafa; white-space: normal; }
 td { padding: 8px 11px; border-bottom: 1px solid #f0f0f0; vertical-align: top; max-width: 200px; word-break: break-all; }
 tr.row-danger td { background: #fff9f9 !important; }
 tr.row-warning td { background: #fffef0 !important; }
@@ -814,6 +814,7 @@ function extractAddrSuffix(addr, apiResult) {
 // ============================================================
 let activeFilter = 'all';
 let _lastRenderArgs = null;
+let _lastTableRenderArgs = null;
 
 function setFilter(f) {
   activeFilter = f;
@@ -827,7 +828,7 @@ function setFilter(f) {
   if(f === '正常') switchTab('all');
   if(_lastRenderArgs) {
     renderIssues(..._lastRenderArgs);
-    renderTable(..._lastRenderArgs);
+    if(_lastTableRenderArgs) renderTable(..._lastTableRenderArgs);
   }
 }
 
@@ -959,6 +960,7 @@ function buildCard(r, cls) {
 }
 
 function renderTable(colZipIdx, colAddrIdx, colBillAddrIdx, colOpluxIdx, colOrderIdx) {
+  _lastTableRenderArgs = [colZipIdx, colAddrIdx, colBillAddrIdx, colOpluxIdx, colOrderIdx];
   // C列(2), F列(5), G列(6) を先頭に固定表示し、設定列を後続に追加
   const norm = s => (s||'').trim().toLowerCase().replace(/\s/g,'');
   const orderHeader = colOrderIdx >= 0 && headers[colOrderIdx] ? norm(headers[colOrderIdx]) : null;
@@ -992,11 +994,17 @@ function renderTable(colZipIdx, colAddrIdx, colBillAddrIdx, colOpluxIdx, colOrde
     return escHtml(renamed);
   };
   const extras=['郵便番号(ハイフン付)','API取得住所','住所一致度','住所検証ステータス','別送','検知内容','補正候補住所'];
+  const EXTRAS_DISPLAY = {
+    'API取得住所':      'API<br>取得住所',
+    '住所一致度':        '住所<br>一致度',
+    '住所検証ステータス': '住所検証<br>ステータス',
+    '補正候補住所':      '補正候補<br>住所',
+  };
   const firstColLabel = (colOrderIdx >= 0 && headers[colOrderIdx]) ? formatHeader(headers[colOrderIdx]) : '受注番号';
 
   let thHtml=`<tr><th>${firstColLabel}</th>`;
   for(const ci of show) thHtml+=`<th>${formatHeader(headers[ci]||'列'+(ci+1))}</th>`;
-  for(const e of extras) thHtml+=`<th class="extra">${formatHeader(e)}</th>`;
+  for(const e of extras) thHtml+=`<th class="extra">${EXTRAS_DISPLAY[e] !== undefined ? EXTRAS_DISPLAY[e] : formatHeader(e)}</th>`;
   thHtml+='<th style="text-align:center;white-space:nowrap;">確認済</th></tr>';
   document.getElementById('tableHead').innerHTML=thHtml;
 
@@ -1113,7 +1121,7 @@ function resetTool(){
   document.getElementById('fileInput').value='';
   document.getElementById('btnRun').disabled=true;
   parsedRows=[];headers=[];resultRows=[];
-  activeFilter='all'; _lastRenderArgs=null;
+  activeFilter='all'; _lastRenderArgs=null; _lastTableRenderArgs=null;
   const _n=document.getElementById('dedupNotice'); if(_n) _n.style.display='none';
   document.getElementById('cntTotal').textContent='0';
   Object.keys(apiCache).forEach(k => delete apiCache[k]);
